@@ -41,8 +41,7 @@ Compile your project with coredump support:
 -D CONFIG_ESP_COREDUMP_STACK_SIZE=1792 \
 -D CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=64 \
 -D CONFIG_ESP_COREDUMP_CHECK_BOOT=1" \
-  src/esp32backtracetest \
-  --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+  src/esp32backtracetest
 ```
 
 ### Upload
@@ -53,8 +52,7 @@ Upload the firmware to your board:
 ./arduino-cli upload \
   --fqbn esp32:esp32:esp32da \
   --port /dev/cu.usbserial-0001 \
-  src/esp32backtracetest \
-  --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+  src/esp32backtracetest
 ```
 
 > **ⓘ** Use `./arduino-cli board list` to find your device's port.
