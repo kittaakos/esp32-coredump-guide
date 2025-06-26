@@ -11,9 +11,20 @@ This guide shows how to configure an ESP32-WROOM-32 board to generate and decode
 
 Adapted from [this Arduino Forum post](https://forum.arduino.cc/t/can-arduino-cli-customize-esp32-core-dumps-config-with-custom-parition-and-download-it/1375658/2).
 
+### Prerequisites
+
+Make sure the following command-line tools are available:
+
+```sh
+brew install jq pipx  # macOS
+sudo apt install jq pipx  # Debian/Ubuntu
+```
+
+> **ⓘ** `jq` is used to extract values from the Arduino CLI JSON output. `pipx` is used to run Python-based tools like `esp-coredump` in isolation. `pipx` is optional if you do not want to use esp-coredump.
+
 ### Install Arduino Core for ESP32
 
-Install the ESP32 Arduino core:
+Install the ESP32 Arduino core (one-time setup):
 
 ```sh
 ./arduino-cli \
@@ -21,13 +32,29 @@ Install the ESP32 Arduino core:
   --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 ```
 
+### Setup
+
+Set the environment variables, for example:
+
+```sh
+# sometimes the ESP-IDF chip does not match the Arduino FQBN's board ID
+chip=esp32
+board_id=esp32da
+fqbn="esp32:esp32:$board_id"
+port="/dev/cu.usbserial-0001"
+```
+
+> **ⓘ** Use the [`board search`](https://arduino.github.io/arduino-cli/latest/commands/arduino-cli_board_search/) command of the Arduino CLI to find your device's FQBN.
+
+> **ⓘ** Use the [`board list`](https://arduino.github.io/arduino-cli/latest/commands/arduino-cli_board_list/) command of the Arduino CLI to find your device's port.
+
 ### Compile
 
 Compile your project with coredump support:
 
 ```sh
 elf_path=$(./arduino-cli compile \
-  --fqbn esp32:esp32:esp32da \
+  --fqbn $fqbn \
   --format json \
   --build-property "compiler.c.extra_flags=-D CONFIG_LOG_DEFAULT_LEVEL=3 \
 -D CONFIG_ESP_COREDUMP_ENABLE=1 \
@@ -64,22 +91,20 @@ Upload the firmware to your board:
 
 ```sh
 ./arduino-cli upload \
-  --fqbn esp32:esp32:esp32da \
-  --port /dev/cu.usbserial-0001 \
+  --fqbn $fqbn \
+  --port $port \
   src/esp32backtracetest
 ```
 
-> **ⓘ** The port might be other than `/dev/cu.usbserial-0001`. Use the [`board list`](https://arduino.github.io/arduino-cli/latest/commands/arduino-cli_board_list/) command of the Arduino CLI to find your device's port.
+> **⚠️** After uploading, allow the firmware to run for 10–15 seconds (or until a crash occurs) to ensure the coredump is written to flash. The crash must happen and be flushed before powering off or resetting the board.
 
-> **ⓘ** After uploading, allow the firmware to run for 10–15 seconds (or until a crash occurs) to ensure the coredump is written to flash. The crash must happen and be flushed before powering off or resetting the board.
+### Monitor (optional)
 
-### Monitor
-
-Open a serial monitor (optional):
+Open a serial monitor:
 
 ```sh
 ./arduino-cli monitor \
-  --port /dev/cu.usbserial-0001 \
+  --port $port \
   --config baudrate=115200
 ```
 
@@ -89,7 +114,7 @@ Find the path to `esptool`:
 
 ```sh
 esptool_dir=$(./arduino-cli board details \
-  --fqbn esp32:esp32:esp32da \
+  --fqbn $fqbn \
   --format json | \
   jq -r '.build_properties[]
     | select(startswith("runtime.tools.esptool_py.path="))
@@ -103,8 +128,8 @@ Use `esptool` to read the flash partition that contains the coredump:
 
 ```sh
 $esptool_dir/esptool \
-  --chip esp32 \
-  --port /dev/cu.usbserial-0001 \
+  --chip $chip \
+  --port $port \
   --baud 115200 \
   read_flash 0x3F0000 0x10000 coredump.raw
 ```
@@ -115,11 +140,13 @@ $esptool_dir/esptool \
 
 After extracting the raw flash data (`coredump.raw`), decode it using `trbr`:
 
+> **⚠️** The ELF used for decoding must match the binary running at the time of crash. SHA mismatches will result in decode failure.
+
 ```sh
 ./trbr decode \
   --input coredump.raw \
   --elf-path "$elf_path" \
-  --fqbn esp32:esp32:esp32da \
+  --fqbn $fqbn \
   --coredump-mode
 ```
 
@@ -190,6 +217,23 @@ After extracting the raw flash data (`coredump.raw`), decode it using `trbr`:
 
 </p>
 </details>
+
+### Decode with esp-coredump (optional)
+
+Compare the decode output with the official [esp-coredump](https://github.com/espressif/esp-coredump) one:
+
+```sh
+pipx run esp-coredump info_corefile \
+  --core "" \
+  --core-format elf \
+  --off 0x3F0000 \
+  --save-core coredump.elf \
+  $elf_path
+```
+
+> **ⓘ** This step requires Python, `pipx`, and `esp-coredump` to be installed.
+
+> You might need to set `ESP-IDF` to the shell. For example, `source ~/esp/v5.4.1/esp-idf/export.sh`.
 
 ---
 
